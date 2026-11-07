@@ -1,0 +1,30 @@
+# Python / virtualenv
+venv/
+__pycache__/
+*.pyc
+
+# Secrets: never commit. Share variable names via .env.example instead.
+.env
+.env.*
+!.env.example
+
+# SQLite is not used (PostgreSQL is the source of truth)
+*.sqlite3
+
+# Private planning and learning (mentor instructions, blueprint, log, ADRs,
+# content calendar, experiments). Only code and its setup files are public.
+CLAUDE.md
+backend/docs/
+experiments/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+
+# Test / tooling caches
+.pytest_cache/
+staticfiles/
+
+# Personal focus page
+NOW.md
