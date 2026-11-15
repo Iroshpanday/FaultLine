@@ -1,6 +1,11 @@
-import { Chat } from "./chat";
+import { ChatWidget } from "./chat-widget";
+import { Storefront } from "./storefront";
 
-// One demo store for now. Multi-store routing comes with tenants (E2).
 export default function Home() {
-  return <Chat storeSlug="momo-mart" storeName="Momo Mart" />;
+  return (
+    <>
+      <Storefront />
+      <ChatWidget />
+    </>
+  );
 }

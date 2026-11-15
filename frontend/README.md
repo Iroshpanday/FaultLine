@@ -1,6 +1,14 @@
 # Faultline frontend
 
-Customer chat page for the Faultline store agent (Next.js 16, TypeScript, Tailwind).
+Demo storefront for **Momo Mart** with an AI **order help** chat (Next.js 16, TypeScript, Tailwind).
+
+Shoppers enter the email they used at checkout, then ask about their orders.
+The assistant only ever sees orders placed with that email.
+
+- Demo email: `demo.customer@example.com` (orders #123 to #126)
+- A second shopper, `sita.sharma@example.com`, owns #127, so the demo can
+  show that one customer can't see another's order.
+- `http://localhost:3000/#order-help` opens the chat straight away.
 
 The browser only talks to this app. Requests to `/api/*` are proxied to the
 Django backend (see `next.config.ts`), so no CORS setup is needed.
