@@ -1,6 +1,7 @@
 """Ask the real agent one question, end to end, and show what it logged.
 
     python manage.py ask_agent momo-mart "Where is my order #123?"
+    python manage.py ask_agent momo-mart "Where is #127?" --email sita.sharma@example.com
 
 Uses the real LLM (2 requests of your free quota per order question).
 """
@@ -20,8 +21,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("store_slug")
         parser.add_argument("question")
+        parser.add_argument("--email", default="demo.customer@example.com",
+                            help="The shopper's checkout email (default: the demo customer).")
 
-    def handle(self, *args, store_slug, question, **options):
+    def handle(self, *args, store_slug, question, email, **options):
         store = Store.objects.filter(slug=store_slug).first()
         if store is None:
             raise CommandError(f"No store with slug {store_slug!r}. Run: python manage.py seed_demo")
@@ -31,7 +34,7 @@ class Command(BaseCommand):
             raise CommandError(f"{exc}. Add it to backend/.env.") from None
 
         # A fresh key per command run: each run is a new question.
-        result = run_agent(store, question, f"cli-{uuid.uuid4()}", llm)
+        result = run_agent(store, question, f"cli-{uuid.uuid4()}", llm, customer_email=email)
         run = result.run
 
         self.stdout.write(f"store:   {store.name}")

@@ -1,6 +1,7 @@
 """The agent loop: one customer question in, one answer out.
 
-    run = run_agent(store, "Where is my order #123?", idempotency_key, llm)
+    run = run_agent(store, "Where is my order #123?", idempotency_key, llm,
+                    customer_email="demo.customer@example.com")
 
 Writes, in this order, each committed on its own:
   1. AgentRun (pending)                    before any provider call
@@ -11,8 +12,12 @@ There is deliberately NO transaction around this function. A provider call
 takes seconds; holding a DB transaction open that long ties up a connection,
 and a crash would roll back the pending rows that tell us what happened.
 
+Identity: the shopper gives the email used at checkout; the tool only
+returns orders for that email (order number + email, like a guest order
+lookup page). The email never goes into the prompt.
+
 v1 limits (on purpose, each is a later episode): no retries, one tool,
-and anyone in the store can ask about any order number.
+chat history is sent by the browser (not stored server-side yet).
 """
 
 import json
@@ -33,16 +38,25 @@ from .llm.base import (
     RateLimited,
 )
 from .models import AgentRun, AgentRunStatus, CostSource, LLMCall, LLMCallStatus, LLMErrorCategory
-from .tools import run_tool, tool_specs
+from .tools import ToolContext, run_tool, tool_specs
 
 MAX_STEPS = 5  # a model that keeps calling tools forever gets stopped here (E3)
 
 SYSTEM_PROMPT = (
     "You are the customer support assistant for the online store {store_name}. "
-    "To answer questions about an order, call get_order_status. "
-    "Never guess or invent an order status. If the order is not found, say so "
-    "and ask the customer to check the number. Keep answers short and friendly."
+    "The customer is already identified by the email they gave when the chat "
+    "started; never ask for it and never mention it. "
+    "To answer a question about an order, call get_order_status with the order "
+    "number; it only returns this customer's own orders. "
+    "Never guess or invent an order status, date or amount. If an order is not "
+    "found, say you couldn't find that order number on their account and ask "
+    "them to check it. If a question is not about their orders, say briefly "
+    "that you can help with order status and that the store team can help "
+    "with anything else. "
+    "Reply in plain text without markdown, in at most three short sentences."
 )
+
+MAX_HISTORY = 10  # earlier turns the browser may send back for context
 
 
 class DuplicateRun(Exception):
@@ -64,6 +78,9 @@ def run_agent(
     question: str,
     idempotency_key: str,
     llm: LLMAdapter,
+    *,
+    customer_email: str,
+    history: list[dict] | None = None,
     max_steps: int = MAX_STEPS,
 ) -> AgentResult:
     # 1. Pending row first. The unique (store, key) constraint turns a
@@ -78,8 +95,10 @@ def run_agent(
             AgentRun.objects.get(store=store, idempotency_key=idempotency_key)
         ) from None
 
+    ctx = ToolContext(store=store, customer_email=customer_email)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT.format(store_name=store.name)},
+        *_safe_history(history),
         {"role": "user", "content": question},
     ]
 
@@ -97,7 +116,7 @@ def run_agent(
         # The model asked for tools: run them and send the results back.
         messages.append(_assistant_message(response))
         for call in response.tool_calls:
-            result = run_tool(store, call.name, call.arguments)
+            result = run_tool(ctx, call.name, call.arguments)
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)}
             )
@@ -133,6 +152,19 @@ def _call_llm(run: AgentRun, attempt: int, llm: LLMAdapter, messages: list) -> L
         call.cost_source = CostSource.PROVIDER
     call.save()
     return response
+
+
+def _safe_history(history: list[dict] | None) -> list[dict]:
+    """Earlier turns from the browser. Untrusted, so only plain user/assistant
+    text gets through: no system or tool messages can be smuggled in. Even a
+    faked assistant turn can't reach another customer's order, because the
+    tool checks the email from the request, not anything in the chat."""
+    safe = [
+        {"role": item["role"], "content": str(item["content"])}
+        for item in (history or [])
+        if item.get("role") in ("user", "assistant") and item.get("content")
+    ]
+    return safe[-MAX_HISTORY:]
 
 
 def _finish(run: AgentRun, status: str, answer: str | None) -> AgentResult:

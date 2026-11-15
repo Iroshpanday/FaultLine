@@ -15,12 +15,21 @@ from .models import AgentRunStatus
 from .services import DuplicateRun, run_agent
 
 
+class HistoryItemSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=["user", "assistant"])
+    content = serializers.CharField(max_length=2000)
+
+
 class ChatRequestSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=1000)
+    # The email used at checkout. Orders are only shown if they belong to it.
+    email = serializers.EmailField()
+    history = HistoryItemSerializer(many=True, required=False, max_length=10)
 
 
 class ChatView(APIView):
-    """POST /api/stores/<slug>/chat  {"message": "..."}  + header Idempotency-Key.
+    """POST /api/stores/<slug>/chat  + header Idempotency-Key
+    {"message": "...", "email": "...", "history": [{"role": "user", "content": "..."}]}
 
     Public on purpose: shoppers are not Django users. That makes it the one
     explicit exception to deny-by-default, so it MUST be throttled: every
@@ -45,8 +54,16 @@ class ChatView(APIView):
         body = ChatRequestSerializer(data=request.data)
         body.is_valid(raise_exception=True)
 
+        data = body.validated_data
         try:
-            result = run_agent(store, body.validated_data["message"], key, llm_module.build_llm())
+            result = run_agent(
+                store,
+                data["message"],
+                key,
+                llm_module.build_llm(),
+                customer_email=data["email"],
+                history=data.get("history"),
+            )
         except DuplicateRun as dup:
             return Response(
                 {"error": "This message was already sent.", "run_id": str(dup.run.id)},
