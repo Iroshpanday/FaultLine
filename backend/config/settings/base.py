@@ -108,6 +108,12 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "chat": env("CHAT_THROTTLE_RATE", default="10/min"),
     },
+    # How many proxies sit in front of Django. Left unset, DRF trusts the
+    # client-sent X-Forwarded-For header, so a script could send a new fake
+    # IP each time and skip the throttle. 0 = trust only the real socket
+    # address. Set it to 1 in prod only when Django is reachable solely
+    # through one proxy (which then writes the real client IP).
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0),
 }
 
 # Whether prompts/responses are stored in the DB. Off unless an environment

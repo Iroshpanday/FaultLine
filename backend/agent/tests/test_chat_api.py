@@ -108,3 +108,21 @@ def test_too_many_requests_are_throttled(fake_llm, monkeypatch):
     codes = [post_chat(store.slug, "hi", key=f"k{i}").status_code for i in range(3)]
 
     assert codes == [200, 200, 429]
+
+
+def test_fake_forwarded_for_headers_do_not_reset_the_throttle(fake_llm, monkeypatch):
+    # A script sending a new made-up IP each time must still be limited.
+    monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", {"chat": "2/min"})
+    store = StoreFactory()
+    fake_llm([Reply("1"), Reply("2")])
+    client = APIClient()
+
+    codes = [
+        client.post(
+            f"/api/stores/{store.slug}/chat", {"message": "hi"}, format="json",
+            HTTP_IDEMPOTENCY_KEY=f"k{i}", HTTP_X_FORWARDED_FOR=f"10.0.0.{i}",
+        ).status_code
+        for i in range(3)
+    ]
+
+    assert codes == [200, 200, 429]
