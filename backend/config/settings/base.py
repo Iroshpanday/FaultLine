@@ -108,3 +108,9 @@ REST_FRAMEWORK = {
 # Whether prompts/responses are stored in the DB. Off unless an environment
 # turns it on; prod stays off until a retention policy exists (E10).
 STORE_PROMPTS = env.bool("STORE_PROMPTS", default=False)
+
+# LLM provider. The key lives only in .env. The model is config, not code,
+# because free models come and go. "No answer in 30 s" is a timeout we own.
+OPENROUTER_API_KEY = env("OPENROUTER_API_KEY", default="")
+OPENROUTER_MODEL = env("OPENROUTER_MODEL", default="nvidia/nemotron-3.5-super-vl:free")
+OPENROUTER_TIMEOUT_SECONDS = env.float("OPENROUTER_TIMEOUT_SECONDS", default=30.0)

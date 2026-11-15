@@ -52,6 +52,9 @@ class RecordedCall:
 
 
 class FakeLLM(LLMAdapter):
+    provider = "fake"
+    model = FAKE_MODEL
+
     def __init__(self, script: list[FakeStep]):
         self._script = list(script)
         self.calls: list[RecordedCall] = []
@@ -69,7 +72,9 @@ class FakeLLM(LLMAdapter):
             case Reply(text=text, usage=usage):
                 return LLMResponse(model=FAKE_MODEL, text=text, usage=usage)
             case CallTool(name=name, arguments=arguments, usage=usage):
-                call = ToolCallRequest(name=name, arguments=copy.deepcopy(arguments))
+                call = ToolCallRequest(
+                    name=name, arguments=copy.deepcopy(arguments), id=f"call_{len(self.calls)}"
+                )
                 return LLMResponse(model=FAKE_MODEL, tool_calls=(call,), usage=usage)
             case Raise(error=error):
                 raise error

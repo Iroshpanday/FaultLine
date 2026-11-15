@@ -7,6 +7,7 @@ never touch the network.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any
 
 Message = dict[str, Any]  # OpenAI-style: {"role": "user", "content": "..."}
@@ -25,6 +26,9 @@ class Usage:
 class ToolCallRequest:
     name: str
     arguments: dict[str, Any]
+    # The provider's id for this call. The tool result we send back must
+    # quote it, so the model knows which call the result answers.
+    id: str = ""
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,10 @@ class LLMResponse:
     text: str | None = None
     tool_calls: tuple[ToolCallRequest, ...] = field(default_factory=tuple)
     usage: Usage | None = None
+    # Lets us match our LLMCall row to the provider's own logs and bill.
+    provider_request_id: str = ""
+    # USD as reported by the provider. None = not reported (never 0).
+    cost: Decimal | None = None
 
 
 class ProviderError(Exception):
@@ -51,7 +59,15 @@ class RateLimited(ProviderError):
         self.retry_after = retry_after
 
 
+class InvalidResponse(ProviderError):
+    """The provider answered, but not in a shape we can use (bad JSON, no choices)."""
+
+
 class LLMAdapter(ABC):
+    # Recorded on every LLMCall row, so each adapter must say who it is.
+    provider: str
+    model: str
+
     @abstractmethod
     def complete(self, messages: list[Message], tools: list[ToolSpec] | None = None) -> LLMResponse:
         """One provider attempt. Raises ProviderError subclasses; never retries internally."""

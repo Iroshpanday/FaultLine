@@ -12,7 +12,7 @@ def test_steps_are_returned_in_script_order():
     first = llm.complete(USER_MSG)
     second = llm.complete(USER_MSG)
 
-    assert first.tool_calls == (ToolCallRequest("get_order_status", {"order_id": "o-1"}),)
+    assert first.tool_calls == (ToolCallRequest("get_order_status", {"order_id": "o-1"}, id="call_1"),)
     assert first.text is None
     assert second.text == "It shipped."
     assert llm.remaining_steps == 0
