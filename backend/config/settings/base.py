@@ -103,6 +103,11 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # Per-client limits for views that set throttle_scope. "chat" spends LLM
+    # money on every request, and the free model allows ~50 requests a day.
+    "DEFAULT_THROTTLE_RATES": {
+        "chat": env("CHAT_THROTTLE_RATE", default="10/min"),
+    },
 }
 
 # Whether prompts/responses are stored in the DB. Off unless an environment

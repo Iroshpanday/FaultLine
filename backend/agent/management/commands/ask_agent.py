@@ -7,10 +7,9 @@ Uses the real LLM (2 requests of your free quota per order question).
 
 import uuid
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from agent.llm.openrouter import OpenRouterLLM
+from agent.llm import build_llm
 from agent.services import run_agent
 from stores.models import Store
 
@@ -27,11 +26,7 @@ class Command(BaseCommand):
         if store is None:
             raise CommandError(f"No store with slug {store_slug!r}. Run: python manage.py seed_demo")
         try:
-            llm = OpenRouterLLM(
-                settings.OPENROUTER_API_KEY,
-                settings.OPENROUTER_MODEL,
-                settings.OPENROUTER_TIMEOUT_SECONDS,
-            )
+            llm = build_llm()
         except ValueError as exc:
             raise CommandError(f"{exc}. Add it to backend/.env.") from None
 
