@@ -28,3 +28,7 @@ staticfiles/
 
 # Personal focus page
 NOW.md
+
+# Design tooling working files
+.taste-skill/
+frontend/.taste-skill/
