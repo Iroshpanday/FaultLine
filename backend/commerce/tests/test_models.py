@@ -43,3 +43,12 @@ def test_store_with_customers_cannot_be_deleted():
 
     with pytest.raises(ProtectedError):
         customer.store.delete()
+
+
+def test_order_cannot_use_a_customer_from_another_store():
+    # The customer belongs to store B; the order says store A.
+    store_a = StoreFactory()
+    customer_of_b = CustomerFactory()
+
+    with pytest.raises(IntegrityError):
+        OrderFactory(store=store_a, customer=customer_of_b)

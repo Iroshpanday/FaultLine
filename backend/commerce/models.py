@@ -20,6 +20,12 @@ class Customer(models.Model):
             models.UniqueConstraint(
                 fields=["store", "external_ref"], name="customer_external_ref_unique_per_store"
             ),
+            # Looks redundant (id is already unique), but Postgres needs a
+            # unique (id, store) pair so orders can reference it: see the
+            # composite foreign key "order_customer_same_store" in
+            # migration 0004. That FK is what stops an order in store A
+            # pointing at a customer of store B.
+            models.UniqueConstraint(fields=["id", "store"], name="customer_id_store_unique"),
         ]
 
     def __str__(self):
