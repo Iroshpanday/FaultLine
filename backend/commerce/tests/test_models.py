@@ -4,7 +4,7 @@ import pytest
 from django.db import IntegrityError
 from django.db.models import ProtectedError
 
-from commerce.factories import CustomerFactory, OrderFactory
+from commerce.factories import CustomerFactory, OrderFactory, RefundFactory
 from stores.factories import StoreFactory
 
 pytestmark = pytest.mark.django_db
@@ -52,3 +52,16 @@ def test_order_cannot_use_a_customer_from_another_store():
 
     with pytest.raises(IntegrityError):
         OrderFactory(store=store_a, customer=customer_of_b)
+
+
+def test_refund_amount_must_be_positive():
+    with pytest.raises(IntegrityError):
+        RefundFactory(amount=Decimal("0.00"))
+
+
+def test_refund_must_belong_to_the_orders_store():
+    order = OrderFactory()
+    other_store = StoreFactory()
+
+    with pytest.raises(IntegrityError):
+        RefundFactory(order=order, store=other_store)
