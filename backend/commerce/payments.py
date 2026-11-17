@@ -14,7 +14,7 @@ class PaymentError(Exception):
     """Base for every payment failure our code must handle."""
 
 
-class PaymentTimeout(PaymentError):
+class PaymentTimeout(PaymentError, TimeoutError):
     """We stopped waiting for the provider's reply.
 
     It does NOT mean the refund failed. The provider may have paid it out and

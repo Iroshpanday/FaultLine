@@ -179,3 +179,14 @@ def test_more_than_ten_history_turns_is_400(fake_llm):
     history = [{"role": "user", "content": "x"}] * 11
 
     assert post_chat(store.slug, "hi", history=history).status_code == 400
+
+
+def test_the_public_chat_never_offers_refunds(fake_llm):
+    # Even if the model asks for a refund, the public endpoint has no gateway to pay with.
+    order = OrderFactory(number=123, customer__email=EMAIL)
+    llm = fake_llm([CallTool("refund_order", {"order_number": 123}), Reply("Sorry, I can't do that.")])
+
+    post_chat(order.store.slug, "Refund my order #123")
+
+    assert "refund_order" not in str(llm.calls[0].tools)
+    assert "unknown tool: refund_order" in llm.calls[1].messages[-1]["content"]

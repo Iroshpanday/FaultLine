@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from commerce.payments import PaymentGateway
 from stores.models import Store
 
 from .llm.base import (
@@ -41,6 +42,10 @@ from .models import AgentRun, AgentRunStatus, CostSource, LLMCall, LLMCallStatus
 from .tools import ToolContext, run_tool, tool_specs
 
 MAX_STEPS = 5  # a model that keeps calling tools forever gets stopped here (E3)
+
+# NAIVE v1 (E1, on purpose): "a timeout is usually a blip, so try the tool again".
+# Fine for reading an order status. For a refund it pays the customer twice.
+TOOL_RETRIES = 2
 
 SYSTEM_PROMPT = (
     "You are the customer support assistant for the online store {store_name}. "
@@ -81,6 +86,7 @@ def run_agent(
     *,
     customer_email: str,
     history: list[dict] | None = None,
+    payments: PaymentGateway | None = None,
     max_steps: int = MAX_STEPS,
 ) -> AgentResult:
     # 1. Pending row first. The unique (store, key) constraint turns a
@@ -95,7 +101,10 @@ def run_agent(
             AgentRun.objects.get(store=store, idempotency_key=idempotency_key)
         ) from None
 
-    ctx = ToolContext(store=store, customer_email=customer_email)
+    # payments: only callers that may move money pass a gateway (tests, staff tools later).
+    # The public chat view never does, so refund_order isn't offered there.
+    ctx = ToolContext(store=store, customer_email=customer_email, payments=payments)
+    specs = tool_specs(ctx)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT.format(store_name=store.name)},
         *_safe_history(history),
@@ -106,7 +115,7 @@ def run_agent(
         run.steps = step
         run.save(update_fields=["steps"])
 
-        response = _call_llm(run, step, llm, messages)
+        response = _call_llm(run, step, llm, messages, specs)
         if response is None:  # provider failed; already recorded
             return _finish(run, AgentRunStatus.FAILED, answer=None)
 
@@ -116,7 +125,7 @@ def run_agent(
         # The model asked for tools: run them and send the results back.
         messages.append(_assistant_message(response))
         for call in response.tool_calls:
-            result = run_tool(ctx, call.name, call.arguments)
+            result = _run_tool_with_retries(ctx, call.name, call.arguments)
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)}
             )
@@ -125,14 +134,31 @@ def run_agent(
     return _finish(run, AgentRunStatus.FAILED, answer=None)
 
 
-def _call_llm(run: AgentRun, attempt: int, llm: LLMAdapter, messages: list) -> LLMResponse | None:
+def _run_tool_with_retries(ctx: ToolContext, name: str, arguments: dict) -> dict:
+    """NAIVE v1: any tool that times out is simply run again, up to TOOL_RETRIES times.
+
+    It treats every tool as safe to repeat. A refund is not: its timeout may come
+    after the money already left (commerce.payments.PaymentTimeout).
+    """
+    for attempt in range(TOOL_RETRIES + 1):
+        try:
+            return run_tool(ctx, name, arguments)
+        except TimeoutError:
+            if attempt == TOOL_RETRIES:
+                return {"error": f"{name} timed out; please try again later"}
+    raise AssertionError("unreachable")
+
+
+def _call_llm(
+    run: AgentRun, attempt: int, llm: LLMAdapter, messages: list, specs: list
+) -> LLMResponse | None:
     """One provider request, bracketed by its LLMCall row. Returns None on failure."""
     call = LLMCall.objects.create(
         agent_run=run, attempt_number=attempt, provider=llm.provider, model=llm.model
     )
     started = time.monotonic()
     try:
-        response = llm.complete(messages, tools=tool_specs())
+        response = llm.complete(messages, tools=specs)
     except ProviderError as exc:
         call.status = LLMCallStatus.FAILED
         call.error_category = _error_category(exc)
